@@ -95,7 +95,7 @@ func NewAuth(
 		KeyCache:    keyCache,
 		KeyCacheTTL: keyCacheTTL,
 		ServiceDID:  serviceDID,
-		Dir:         &dir,
+		Dir:         dir,
 	}, nil
 }
 
