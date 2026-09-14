@@ -1,23 +1,19 @@
-FROM golang:1.23-bookworm
+FROM golang:1.26-trixie
 ENV CGO_ENABLED=1
 ADD go.mod /src/go.mod
-ADD go.sum /src/go.sum
 
 WORKDIR /src
-RUN go mod download -x
+RUN go mod tidy
 
 ADD . /src
 RUN go build -o douga
 
-FROM debian:bookworm
+FROM debian:trixie
 COPY --from=0 /src/douga /douga
-RUN apt update
-RUN apt install -y ca-certificates curl xz-utils
-RUN curl https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz --output /tmp/ffmpeg.tar.xz
-RUN echo "7fa72b652e19bf84c9461e332ea1cdf3 /tmp/ffmpeg.tar.xz" | md5sum -c -
-RUN mkdir /tmp/ffmpeg
-RUN tar xvf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg
-RUN mv /tmp/ffmpeg/ffmpeg-7.0.2-amd64-static/ffmpeg /usr/bin/ffmpeg
+RUN apt update; apt install -y ca-certificates curl xz-utils
+RUN curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-lgpl-shared-9.0.tar.xz --output /tmp/ffmpeg.tar.xz; \
+    cat /tmp/ffmpeg.tar.xz | tar xvfJ - --strip-components=1 -C /usr/local; \
+    rm -f /tmp/ffmpeg.tar.xz
 RUN which ffmpeg
 RUN update-ca-certificates -f
 CMD ["/douga"]
