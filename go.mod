@@ -1,4 +1,4 @@
-module github.com/lun-4/douga
+module github.com/itaru2622/bluesky-video-lun4
 
 go 1.23
 
