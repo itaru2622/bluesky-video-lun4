@@ -1,8 +1,8 @@
 module github.com/itaru2622/bluesky-video-lun4
 
-go 1.23
+go 1.26
 
-toolchain go1.23.4
+toolchain go1.26.1
 
 require (
 	github.com/bluesky-social/indigo v0.0.0-20250109200452-eab52046f680
