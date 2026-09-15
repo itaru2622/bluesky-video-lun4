@@ -38,6 +38,7 @@ type Config struct {
 	FrontendURL    string
 	PLCUrl         string
 	AllowedDIDs    string
+	AllowedAudiences string
 }
 
 type DIDDocument struct {
@@ -115,6 +116,7 @@ type State struct {
 	jobs        sync.Map
 	cm          *ConversionManager
 	allowedDIDs []string
+	allowedAudiences []string
 	// videoMgr owns the multipart upload sessions for
 	// app.bsky.video.{startUpload,uploadPart,finishUpload,abortUpload,getUploadStatus}.
 	videoMgr *videoupload.Manager
@@ -638,6 +640,8 @@ func main() {
 		FrontendURL:    getEnvOrDefault("FRONTEND_URL", ""),
 		PLCUrl:         getEnvOrDefault("ATPROTO_PLC_URL", ""),
 		AllowedDIDs:    getEnvOrDefault("ALLOWED_DIDS", ""),
+		AllowedAudiences: getEnvOrDefault("ALLOWED_AUDIENCES", ""),
+
 	}
 
 	db, err := sql.Open("sqlite3", config.DBPath)
@@ -669,10 +673,17 @@ func main() {
 			allowedDIDs = append(allowedDIDs, did)
 		}
 	}
+	allowedAudiences := make([]string, 0)
+	if config.AllowedAudiences != "" {
+		for _, did := range strings.Split(config.AllowedAudiences, ",") {
+			allowedAudiences = append(allowedAudiences, did)
+		}
+	}
+
 
 	storage := Storage{db: db, appviewUrl: config.AppviewURL, plcUrl: config.PLCUrl}
 	cm := NewConversionManager(config)
-	state := State{storage: &storage, cm: cm, allowedDIDs: allowedDIDs}
+	state := State{storage: &storage, cm: cm, allowedDIDs: allowedDIDs, allowedAudiences: allowedAudiences}
 
 	// app.bsky.video.{startUpload,uploadPart,finishUpload,abortUpload,getUploadStatus}
 	// session manager. Part size / session TTL / temp dir are
@@ -724,6 +735,7 @@ func main() {
 		time.Hour*12,
 		5,
 		serviceWebDID,
+		state,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create Auth: %v", err)
