@@ -1,11 +1,9 @@
 FROM golang:1.26-trixie
 ENV CGO_ENABLED=1
-ADD go.mod /src/go.mod
 
 WORKDIR /src
-RUN go mod tidy
-
 ADD . /src
+RUN go mod tidy
 RUN go build -o douga
 
 FROM debian:trixie
