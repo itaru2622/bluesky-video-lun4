@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,8 @@ import (
 	gonanoid "github.com/matoous/go-nanoid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/samber/lo"
+
+	"github.com/itaru2622/bluesky-video-lun4/internal/videoupload"
 )
 
 type Config struct {
@@ -112,9 +115,14 @@ type State struct {
 	jobs        sync.Map
 	cm          *ConversionManager
 	allowedDIDs []string
+	// videoMgr owns the multipart upload sessions for
+	// app.bsky.video.{startUpload,uploadPart,finishUpload,abortUpload,getUploadStatus}.
+	videoMgr *videoupload.Manager
 }
 
 func (s *State) getUploadLimits(c *gin.Context) {
+	// TODO: hardcoded/unenforced (self-host, not a product); startUpload
+	// doesn't check these against actual usage either.
 	userDID := c.GetString("user_did")
 	out := bsky.VideoGetUploadLimits_Output{
 		CanUpload:            true,
@@ -666,6 +674,31 @@ func main() {
 	cm := NewConversionManager(config)
 	state := State{storage: &storage, cm: cm, allowedDIDs: allowedDIDs}
 
+	// app.bsky.video.{startUpload,uploadPart,finishUpload,abortUpload,getUploadStatus}
+	// session manager. Part size / session TTL / temp dir are
+	// overridable via env for tuning without a rebuild.
+	partSizeBytes := int64(videoupload.DefaultPartSizeBytes)
+	if v := getEnvOrDefault("VIDEO_PART_SIZE_BYTES", ""); v != "" {
+		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil && parsed > 0 {
+			partSizeBytes = parsed
+		} else {
+			log.Printf("ignoring invalid VIDEO_PART_SIZE_BYTES=%q: %v", v, perr)
+		}
+	}
+	sessionTTL := videoupload.DefaultSessionTTL
+	if v := getEnvOrDefault("VIDEO_UPLOAD_SESSION_TTL", ""); v != "" {
+		if parsed, perr := time.ParseDuration(v); perr == nil && parsed > 0 {
+			sessionTTL = parsed
+		} else {
+			log.Printf("ignoring invalid VIDEO_UPLOAD_SESSION_TTL=%q: %v", v, perr)
+		}
+	}
+	state.videoMgr = videoupload.NewManager(videoupload.Config{
+		PartSizeBytes: partSizeBytes,
+		SessionTTL:    sessionTTL,
+		TempDir:       getEnvOrDefault("VIDEO_UPLOAD_TMP_DIR", ""),
+	}, state.finishVideoUpload)
+
 	// Create Gin router
 	r := gin.New()
 
@@ -700,6 +733,13 @@ func main() {
 	authGroup.GET("/xrpc/app.bsky.video.getUploadLimits", state.getUploadLimits)
 	authGroup.GET("/xrpc/app.bsky.video.getJobStatus", state.getJobStatus)
 	r.POST("/xrpc/app.bsky.video.uploadVideo", state.uploadVideo)
+
+	// app.bsky.social/atproto#5384: chunked/resumable video upload.
+	authGroup.POST("/xrpc/app.bsky.video.startUpload", state.startUpload)
+	authGroup.POST("/xrpc/app.bsky.video.uploadPart", state.uploadPart)
+	authGroup.POST("/xrpc/app.bsky.video.finishUpload", state.finishUpload)
+	authGroup.POST("/xrpc/app.bsky.video.abortUpload", state.abortUpload)
+	authGroup.GET("/xrpc/app.bsky.video.getUploadStatus", state.getUploadStatus)
 
 	// TODO implement
 	r.GET("/watch/:did/:cid/*filepath", state.getVideoOrThumbnail)
