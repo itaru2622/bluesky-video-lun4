@@ -55,8 +55,8 @@ func newDIDDocument(serverURL string) DIDDocument {
 		ID:      fmt.Sprintf("did:web:%s", serverURL),
 		Service: []Service{
 			{
-				ID:              "#bsky_chat",
-				Type:            "BskyChatService",
+				ID:              "#bsky_video",
+				Type:            "BskyVideoService",
 				ServiceEndpoint: fmt.Sprintf("https://%s", serverURL),
 			},
 		},
