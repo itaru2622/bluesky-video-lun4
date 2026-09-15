@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ type Auth struct {
 	KeyCacheTTL time.Duration
 	ServiceDID  string
 	Dir         *identity.CacheDirectory
+	state       State
 }
 
 // NewAuth creates a new Auth instance with the given key cache size and TTL
@@ -65,6 +67,7 @@ func NewAuth(
 	keyCacheTTL time.Duration,
 	requestsPerSecond int,
 	serviceDID string,
+	state State,
 ) (*Auth, error) {
 	keyCache, err := lru.NewARC[string, KeyCacheEntry](keyCacheSize)
 	if err != nil {
@@ -96,6 +99,7 @@ func NewAuth(
 		KeyCacheTTL: keyCacheTTL,
 		ServiceDID:  serviceDID,
 		Dir:         dir,
+		state:       state,
 	}, nil
 }
 
@@ -203,8 +207,8 @@ func (auth *Auth) AuthenticateGinRequestViaJWT(c *gin.Context) {
 		return
 	}
 
-	if claims.Audience != auth.ServiceDID {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("Invalid audience (expected %s)", auth.ServiceDID)})
+	if claims.Audience != auth.ServiceDID && ! slices.Contains(auth.state.allowedAudiences, claims.Audience) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("Invalid audience (expected %s %v <=> claim: %s)", auth.ServiceDID, auth.state.allowedAudiences, claims.Audience)})
 		c.Abort()
 		return
 	}
