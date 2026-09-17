@@ -39,6 +39,9 @@ type Config struct {
 	PLCUrl         string
 	AllowedDIDs    string
 	AllowedAudiences string
+	UploadTmpDir  string
+	ConvTmpDir    string
+
 }
 
 type DIDDocument struct {
@@ -365,6 +368,7 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
+	// TODO: Load(key) => not exists when container restarted even tmpDir persisted.
 	if thumbA, exists := cm.thumbnails.Load(key); exists {
 		thumb := thumbA.(*Thumbnail)
 		thumb.LastAccessed = time.Now()
@@ -372,7 +376,7 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 	}
 
 	// Create new temporary directory for thumbnail
-	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("thumb_%s_%s_*", did, cid))
+	tmpDir, err := os.MkdirTemp(cm.config.ConvTmpDir, fmt.Sprintf("thumb_%s_%s_*", did, cid))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory for thumbnail: %w", err)
 	}
@@ -382,6 +386,7 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 		LastAccessed: time.Now(),
 		Generating:   false,
 	}
+	log.Printf("getOrCreateThumbnail created instance (key:%s) with %s", key, tmpDir)
 	cm.thumbnails.Store(key, thumb)
 	return thumb, nil
 }
@@ -438,6 +443,7 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
+	// TODO: Load(key) => not exists when container restarted even tmpDir persisted.
 	if convA, exists := cm.conversions.Load(key); exists {
 		conv := convA.(*Conversion)
 		conv.LastAccessed = time.Now()
@@ -445,7 +451,7 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 	}
 
 	// Create new temporary directory
-	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("hls_%s_%s_*", did, cid))
+	tmpDir, err := os.MkdirTemp(cm.config.ConvTmpDir, fmt.Sprintf("hls_%s_%s_*", did, cid))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
@@ -455,6 +461,7 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 		LastAccessed: time.Now(),
 		Converting:   false,
 	}
+	log.Printf("getOrCreateConversion created instance (key:%s) with %s", key, tmpDir)
 	cm.conversions.Store(key, conv)
 	return conv, nil
 }
@@ -641,7 +648,18 @@ func main() {
 		PLCUrl:         getEnvOrDefault("ATPROTO_PLC_URL", ""),
 		AllowedDIDs:    getEnvOrDefault("ALLOWED_DIDS", ""),
 		AllowedAudiences: getEnvOrDefault("ALLOWED_AUDIENCES", ""),
+		UploadTmpDir:   getEnvOrDefault("VIDEO_UPLOAD_TMP_DIR", "/tmp"),
+		ConvTmpDir:     getEnvOrDefault("VIDEO_CONVERT_TMP_DIR","/tmp"),
 
+	}
+
+	// create dirs with mkdir -p
+	targets := []string { filepath.Dir(config.DBPath), config.UploadTmpDir, config.ConvTmpDir, }
+	for _, d := range targets {
+		err_ := os.MkdirAll(d, 0750)
+		if err_ != nil {
+			log.Fatal(err_)
+		}
 	}
 
 	db, err := sql.Open("sqlite3", config.DBPath)
@@ -707,7 +725,7 @@ func main() {
 	state.videoMgr = videoupload.NewManager(videoupload.Config{
 		PartSizeBytes: partSizeBytes,
 		SessionTTL:    sessionTTL,
-		TempDir:       getEnvOrDefault("VIDEO_UPLOAD_TMP_DIR", ""),
+		TempDir:       config.UploadTmpDir,
 	}, state.finishVideoUpload)
 
 	// Create Gin router
