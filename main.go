@@ -641,7 +641,7 @@ func main() {
 		AllowedAudiences: getEnvOrDefault("ALLOWED_AUDIENCES", ""),
 		UploadTmpDir:   getEnvOrDefault("VIDEO_UPLOAD_TMP_DIR", "/tmp"),
 		ConvTmpDir:     getEnvOrDefault("VIDEO_CONVERT_TMP_DIR","/tmp"),
-		ThumbCmdGet:    getEnvOrDefault("VIDEO_THUMBNAIL_CMD_GET", "ffmpeg -i %s -ss 00:00:01.000 -vframes 1 -vf scale=480:-1 -y %s"),	// extract a frame at 1 second mark and create a thumbnail
+		ThumbCmdGet:    getEnvOrDefault("VIDEO_THUMBNAIL_CMD_GET", "ffmpeg -ss 00:00:01.000 -i %s -vframes 1 -vf scale=480:-2 -y %s"),	// extract a frame at 1 second mark and create a thumbnail
 	// TODO: to make faster, it should switch stream copy mode or re-encode mode according to input video.
 		ConvCmdEncode:  getEnvOrDefault("VIDEO_CONV_CMD_ENCODE",          "ffmpeg -i %s -profile:v baseline -level 3.0 -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
 //		ConvCmdStreamCopy:  getEnvOrDefault("VIDEO_CONV_CMD_STREAM_COPY", "ffmpeg -i %s -c:v copy -c:a copy            -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
