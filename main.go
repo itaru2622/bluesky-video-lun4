@@ -43,7 +43,7 @@ type Config struct {
 	ConvTmpDir    string
 	ThumbCmdGet string
 	ConvCmdEncode  string
-//	ConvCmdStreamCopy string
+	ConvCmdStreamCopy string
 
 }
 
@@ -421,7 +421,7 @@ func (cm *ConversionManager) generateThumbnail(did, cid string, thumb *Thumbnail
 	defer os.Remove(tmpFile)
 
 	// Generate thumbnail using ffmpeg
-        thumbCmd:= strings.Fields( fmt.Sprintf(cm.config.ThumbCmdGet, tmpFile,	 thumb.Path,))
+	thumbCmd:= strings.Fields( fmt.Sprintf(cm.config.ThumbCmdGet, tmpFile,	 thumb.Path,))
 	log.Printf("thumb cmd: %v", thumbCmd)
 
 	cmd :=exec.Command(thumbCmd[0],thumbCmd[1:]...)
@@ -520,10 +520,13 @@ func (cm *ConversionManager) convertToHLS(did, cid string, conv *Conversion) err
 	log.Printf("Converted %s to HLS", cid)
 	log.Printf("temp stored at: %s", tmpFile)
 
-
-	// TODO: to make faster, it should switch stream copy mode or re-encode mode according input video.
-        convCmd:= strings.Fields( fmt.Sprintf(cm.config.ConvCmdEncode, tmpFile,	 filepath.Join(conv.OutputDir, "segment%d.ts"),	 filepath.Join(conv.OutputDir, "playlist.m3u8"),))
-	log.Printf("conv cmd: %v", convCmd)
+	convCmd := strings.Fields( fmt.Sprintf(cm.config.ConvCmdEncode, tmpFile,	 filepath.Join(conv.OutputDir, "segment%d.ts"),	 filepath.Join(conv.OutputDir, "playlist.m3u8"),))
+	// use stream-copy if possible to save time.
+	useStreamCopy := shouldCopyIntoHLS(tmpFile)
+	if useStreamCopy {
+		convCmd = strings.Fields( fmt.Sprintf(cm.config.ConvCmdStreamCopy, tmpFile,	 filepath.Join(conv.OutputDir, "segment%d.ts"),	 filepath.Join(conv.OutputDir, "playlist.m3u8"),))
+	}
+	log.Printf("conv cmd: %v %v", useStreamCopy, convCmd)
 
 	cmd :=exec.Command(convCmd[0],convCmd[1:]...)
 
@@ -642,9 +645,8 @@ func main() {
 		UploadTmpDir:   getEnvOrDefault("VIDEO_UPLOAD_TMP_DIR", "/tmp"),
 		ConvTmpDir:     getEnvOrDefault("VIDEO_CONVERT_TMP_DIR","/tmp"),
 		ThumbCmdGet:    getEnvOrDefault("VIDEO_THUMBNAIL_CMD_GET", "ffmpeg -ss 00:00:01.000 -i %s -vframes 1 -vf scale=480:-2 -y %s"),	// extract a frame at 1 second mark and create a thumbnail
-	// TODO: to make faster, it should switch stream copy mode or re-encode mode according to input video.
 		ConvCmdEncode:  getEnvOrDefault("VIDEO_CONV_CMD_ENCODE",          "ffmpeg -i %s -c:v libx264 -profile:v main   -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
-//		ConvCmdStreamCopy:  getEnvOrDefault("VIDEO_CONV_CMD_STREAM_COPY", "ffmpeg -i %s -c:v copy -c:a copy            -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
+		ConvCmdStreamCopy:  getEnvOrDefault("VIDEO_CONV_CMD_STREAM_COPY", "ffmpeg -i %s -c:v copy -c:a copy            -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
 
 	}
 
