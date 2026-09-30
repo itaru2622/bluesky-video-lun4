@@ -301,6 +301,7 @@ type ConversionManager struct {
 }
 
 type Conversion struct {
+	key          string // cross reference of sync.Map.Store() to purge when process failed.
 	OutputDir    string
 	LastAccessed time.Time
 	Converting   bool
@@ -308,6 +309,7 @@ type Conversion struct {
 }
 
 type Thumbnail struct {
+	key          string // cross reference of sync.Map.Store() to purge when process failed.
 	Path         string
 	LastAccessed time.Time
 	Generating   bool
@@ -385,6 +387,7 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 	}
 
 	thumb := &Thumbnail{
+		key:          key,
 		Path:         filepath.Join(tmpDir, "thumbnail.jpg"),
 		LastAccessed: time.Now(),
 		Generating:   false,
@@ -416,6 +419,9 @@ func (cm *ConversionManager) generateThumbnail(did, cid string, thumb *Thumbnail
 	tmpFile, err := cm.downloadBlob(sourceURL)
 	if err != nil {
 		thumb.Error = fmt.Errorf("failed to download blob for thumbnail: %w", err)
+		// purge because of failed.
+		cm.thumbnails.CompareAndDelete(thumb.key, thumb)
+		go os.RemoveAll(filepath.Dir(thumb.Path))
 		return thumb.Error
 	}
 	defer os.Remove(tmpFile)
@@ -429,6 +435,9 @@ func (cm *ConversionManager) generateThumbnail(did, cid string, thumb *Thumbnail
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		thumb.Error = fmt.Errorf("ffmpeg thumbnail error: %v, output: %s", err, output)
+		// purge because of failed.
+		cm.thumbnails.CompareAndDelete(thumb.key, thumb)
+		go os.RemoveAll(filepath.Dir(thumb.Path))
 		return thumb.Error
 	}
 
@@ -454,6 +463,7 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 	}
 
 	conv := &Conversion{
+		key:          key,
 		OutputDir:    tmpDir,
 		LastAccessed: time.Now(),
 		Converting:   false,
@@ -512,6 +522,9 @@ func (cm *ConversionManager) convertToHLS(did, cid string, conv *Conversion) err
 	tmpFile, err := cm.downloadBlob(sourceURL)
 	if err != nil {
 		conv.Error = fmt.Errorf("failed to download blob: %w", err)
+		// purge because of failed.
+		cm.conversions.CompareAndDelete(conv.key, conv)
+		go os.RemoveAll(conv.OutputDir)
 		return conv.Error
 	}
 	// Clean up the temporary file when done
@@ -533,6 +546,9 @@ func (cm *ConversionManager) convertToHLS(did, cid string, conv *Conversion) err
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		conv.Error = fmt.Errorf("ffmpeg error: %v, output: %s", err, output)
+		// purge because of failed.
+		cm.conversions.CompareAndDelete(conv.key, conv)
+		go os.RemoveAll(conv.OutputDir)
 		return conv.Error
 	}
 
