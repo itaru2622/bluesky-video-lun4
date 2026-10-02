@@ -41,6 +41,7 @@ type Config struct {
 	AllowedAudiences string
 	UploadTmpDir  string
 	ConvDir       string
+	CacheMaxAge   time.Duration
 	ThumbCmdGet string
 	ConvCmdEncode  string
 	ConvCmdStreamCopy string
@@ -359,7 +360,6 @@ func (cm *ConversionManager) cleanupRoutine() {
 	// then, files which processed before last down  cannot be removed.
 	// to improve disk space, it needs dir walk based logic like touchAllCacheEntries.
 
-	// re-using cares for performance improving on restart after long down-time.
 	cm.touchAllCacheEntries()
 
 	for range cm.cleanupTicker.C {
@@ -372,9 +372,10 @@ func (cm *ConversionManager) cleanupRoutine() {
 			key := keyA.(string)
 			conv := convA.(*Conversion)
 
-			if info, err := os.Stat(conv.OutputDir); err == nil && now.Sub(info.ModTime()) > 30*time.Minute {
+			if info, err := os.Stat(conv.OutputDir); err == nil && now.Sub(info.ModTime()) > cm.config.CacheMaxAge {
 				keysToRemove = append(keysToRemove, key)
 				os.RemoveAll(conv.OutputDir)
+				log.Printf("cleanupRoutine remove %s",conv.OutputDir)
 			}
 			return true
 		})
@@ -388,9 +389,10 @@ func (cm *ConversionManager) cleanupRoutine() {
 			key := keyA.(string)
 			thumb := thumbA.(*Thumbnail)
 
-			if info, err := os.Stat(filepath.Dir(thumb.Path)); err == nil && now.Sub(info.ModTime()) > 30*time.Minute {
+			if info, err := os.Stat(filepath.Dir(thumb.Path)); err == nil && now.Sub(info.ModTime()) > cm.config.CacheMaxAge {
 				thumbsToRemove = append(thumbsToRemove, key)
 				os.RemoveAll(filepath.Dir(thumb.Path))
+				log.Printf("cleanupRoutine remove %s",thumb.Path)
 			}
 			return true
 		})
@@ -736,6 +738,16 @@ func main() {
 		ConvCmdEncode:  getEnvOrDefault("VIDEO_CONV_CMD_ENCODE",          "ffmpeg -i %s -c:v libx264 -profile:v main   -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
 		ConvCmdStreamCopy:  getEnvOrDefault("VIDEO_CONV_CMD_STREAM_COPY", "ffmpeg -i %s -c:v copy -c:a copy            -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
 
+	}
+
+	// Cache entries older than this are removed by cleanupRoutine.
+	config.CacheMaxAge = 30 * time.Minute
+	if v := getEnvOrDefault("VIDEO_CACHE_MAX_AGE", ""); v != "" {
+		if parsed, perr := time.ParseDuration(v); perr == nil && parsed > 0 {
+			config.CacheMaxAge = parsed
+		} else {
+			log.Printf("ignoring invalid VIDEO_CACHE_MAX_AGE=%q: %v", v, perr)
+		}
 	}
 
 	// create dirs with mkdir -p
