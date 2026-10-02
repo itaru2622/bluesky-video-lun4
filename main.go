@@ -303,7 +303,6 @@ type ConversionManager struct {
 type Conversion struct {
 	key          string // cross reference of sync.Map.Store() to purge when process failed.
 	OutputDir    string
-	LastAccessed time.Time
 	Converting   bool
 	Error        error
 }
@@ -311,7 +310,6 @@ type Conversion struct {
 type Thumbnail struct {
 	key          string // cross reference of sync.Map.Store() to purge when process failed.
 	Path         string
-	LastAccessed time.Time
 	Generating   bool
 	Error        error
 }
@@ -412,7 +410,6 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 
 	if thumbA, exists := cm.thumbnails.Load(key); exists {
 		thumb := thumbA.(*Thumbnail)
-		thumb.LastAccessed = time.Now()
 		return thumb, nil
 	}
 
@@ -425,7 +422,6 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 	thumb := &Thumbnail{
 		key:          key,
 		Path:         filepath.Join(oDir, "thumbnail.jpg"),
-		LastAccessed: time.Now(),
 		Generating:   false,
 	}
 	log.Printf("getOrCreateThumbnail created instance (key:%s) with %s", key, oDir)
@@ -505,7 +501,6 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 
 	if convA, exists := cm.conversions.Load(key); exists {
 		conv := convA.(*Conversion)
-		conv.LastAccessed = time.Now()
 		return conv, nil
 	}
 
@@ -518,7 +513,6 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 	conv := &Conversion{
 		key:          key,
 		OutputDir:    oDir,
-		LastAccessed: time.Now(),
 		Converting:   false,
 	}
 	log.Printf("getOrCreateConversion created instance (key:%s) with %s", key, oDir)
