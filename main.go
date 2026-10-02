@@ -357,6 +357,10 @@ func (cm *ConversionManager) touchAllCacheEntries() {
 }
 
 func (cm *ConversionManager) cleanupRoutine() {
+	// TODO: current logic with cm.xxx.Range() only sees entries re-requested since this process started.
+	// then, files which processed before last down  cannot be removed.
+	// to improve disk space, it needs dir walk based logic like touchAllCacheEntries.
+
 	// re-using cares for performance improving on restart after long down-time.
 	cm.touchAllCacheEntries()
 
@@ -370,7 +374,7 @@ func (cm *ConversionManager) cleanupRoutine() {
 			key := keyA.(string)
 			conv := convA.(*Conversion)
 
-			if now.Sub(conv.LastAccessed) > 30*time.Minute {
+			if info, err := os.Stat(conv.OutputDir); err == nil && now.Sub(info.ModTime()) > 30*time.Minute {
 				keysToRemove = append(keysToRemove, key)
 				os.RemoveAll(conv.OutputDir)
 			}
@@ -386,7 +390,7 @@ func (cm *ConversionManager) cleanupRoutine() {
 			key := keyA.(string)
 			thumb := thumbA.(*Thumbnail)
 
-			if now.Sub(thumb.LastAccessed) > 30*time.Minute {
+			if info, err := os.Stat(filepath.Dir(thumb.Path)); err == nil && now.Sub(info.ModTime()) > 30*time.Minute {
 				thumbsToRemove = append(thumbsToRemove, key)
 				os.RemoveAll(filepath.Dir(thumb.Path))
 			}
