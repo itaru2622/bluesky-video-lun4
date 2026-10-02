@@ -412,6 +412,16 @@ func (cm *ConversionManager) generateThumbnail(did, cid string, thumb *Thumbnail
 		cm.mu.Unlock()
 	}()
 
+	// for fail-safe processing, ffmpeg outputs into workfile, then publish to thumb.Path on succeeded.
+	workFile, err := os.CreateTemp(cm.config.ConvDir, "work_thumb_*.jpg")
+	if err != nil {
+		thumb.Error = fmt.Errorf("failed to create working file: %w", err)
+		return thumb.Error
+	}
+	workPath := workFile.Name()
+	workFile.Close() // ffmpeg (-y) will overwrite this path itself
+	defer os.Remove(workPath) // no-op once renamed into place below
+
 	sourceURL := fmt.Sprintf("%s/blob/%s/%s", cm.config.AppviewURL, did, cid)
 
 	// Download blob to temporary storage
@@ -426,7 +436,7 @@ func (cm *ConversionManager) generateThumbnail(did, cid string, thumb *Thumbnail
 	defer os.Remove(tmpFile)
 
 	// Generate thumbnail using ffmpeg
-	thumbCmd:= strings.Fields( fmt.Sprintf(cm.config.ThumbCmdGet, tmpFile,	 thumb.Path,))
+	thumbCmd:= strings.Fields( fmt.Sprintf(cm.config.ThumbCmdGet, tmpFile,	 workPath,))
 	log.Printf("thumb cmd: %v", thumbCmd)
 
 	cmd :=exec.Command(thumbCmd[0],thumbCmd[1:]...)
@@ -437,6 +447,14 @@ func (cm *ConversionManager) generateThumbnail(did, cid string, thumb *Thumbnail
 		// purge because of failed.
 		cm.thumbnails.CompareAndDelete(thumb.key, thumb)
 		go os.RemoveAll(filepath.Dir(thumb.Path))
+		return thumb.Error
+	}
+
+	// Publish: by renaming from workPath to thumb.Path
+	log.Printf("publishing thumb: %v", thumb.Path)
+	if err := os.Rename(workPath, thumb.Path); err != nil {
+		thumb.Error = fmt.Errorf("failed to publish generated thumbnail: %w", err)
+		cm.thumbnails.CompareAndDelete(thumb.key, thumb)
 		return thumb.Error
 	}
 
@@ -514,6 +532,14 @@ func (cm *ConversionManager) convertToHLS(did, cid string, conv *Conversion) err
 		cm.mu.Unlock()
 	}()
 
+	// for fail-safe processing, ffmpeg outputs into workdir, then publish to conv.OutputDir on succeeded.
+	workDir, err := os.MkdirTemp(cm.config.ConvDir, "work_hls_*")
+	if err != nil {
+		conv.Error = fmt.Errorf("failed to create working directory: %w", err)
+		return conv.Error
+	}
+	defer os.RemoveAll(workDir) // no-op once renamed into place below
+
 	sourceURL := fmt.Sprintf("%s/blob/%s/%s", cm.config.AppviewURL, did, cid)
 
 	// Download blob to temporary storage
@@ -531,11 +557,11 @@ func (cm *ConversionManager) convertToHLS(did, cid string, conv *Conversion) err
 	log.Printf("Converted %s to HLS", cid)
 	log.Printf("temp stored at: %s", tmpFile)
 
-	convCmd := strings.Fields( fmt.Sprintf(cm.config.ConvCmdEncode, tmpFile,	 filepath.Join(conv.OutputDir, "segment%d.ts"),	 filepath.Join(conv.OutputDir, "playlist.m3u8"),))
+	convCmd := strings.Fields( fmt.Sprintf(cm.config.ConvCmdEncode, tmpFile,	 filepath.Join(workDir, "segment%d.ts"),	 filepath.Join(workDir, "playlist.m3u8"),))
 	// use stream-copy if possible to save time.
 	useStreamCopy := shouldCopyIntoHLS(tmpFile)
 	if useStreamCopy {
-		convCmd = strings.Fields( fmt.Sprintf(cm.config.ConvCmdStreamCopy, tmpFile,	 filepath.Join(conv.OutputDir, "segment%d.ts"),	 filepath.Join(conv.OutputDir, "playlist.m3u8"),))
+		convCmd = strings.Fields( fmt.Sprintf(cm.config.ConvCmdStreamCopy, tmpFile,	 filepath.Join(workDir, "segment%d.ts"),	 filepath.Join(workDir, "playlist.m3u8"),))
 	}
 	log.Printf("conv cmd: %v %v", useStreamCopy, convCmd)
 
@@ -547,6 +573,15 @@ func (cm *ConversionManager) convertToHLS(did, cid string, conv *Conversion) err
 		// purge because of failed.
 		cm.conversions.CompareAndDelete(conv.key, conv)
 		go os.RemoveAll(conv.OutputDir)
+		return conv.Error
+	}
+
+	// Publish: by renaming from workDir to conv.OutputDir
+	log.Printf("publishing conv: %v", conv.OutputDir)
+	os.RemoveAll(conv.OutputDir)
+	if err := os.Rename(workDir, conv.OutputDir); err != nil {
+		conv.Error = fmt.Errorf("failed to publish converted output: %w", err)
+		cm.conversions.CompareAndDelete(conv.key, conv)
 		return conv.Error
 	}
 
