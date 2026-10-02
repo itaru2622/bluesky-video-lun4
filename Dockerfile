@@ -13,4 +13,6 @@ RUN curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpe
     rm -f /tmp/ffmpeg.tar.xz
 RUN update-ca-certificates -f
 COPY --from=0 /src/douga /douga
+RUN mkdir /data
+VOLUME /data
 CMD ["/douga"]
