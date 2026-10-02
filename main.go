@@ -326,7 +326,40 @@ func NewConversionManager(config Config) *ConversionManager {
 	return cm
 }
 
+// touchAllCacheEntries: mark all caches accessed to prevents removing by cleanup logic on restarting after long down-time,
+//  by touch cm.config.ConvDir/(hls|thumb)/{did}/{cid} folders.
+func (cm *ConversionManager) touchAllCacheEntries() {
+	now := time.Now()
+	for _, kind := range []string{"hls", "thumb"} {
+		root := filepath.Join(cm.config.ConvDir, kind)
+		didEntries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, didEntry := range didEntries {
+			if !didEntry.IsDir() {
+				continue
+			}
+			didDir := filepath.Join(root, didEntry.Name())
+			cidEntries, err := os.ReadDir(didDir)
+			if err != nil {
+				continue
+			}
+			for _, cidEntry := range cidEntries {
+				if !cidEntry.IsDir() {
+					continue
+				}
+				os.Chtimes(filepath.Join(didDir, cidEntry.Name()), now, now)
+				log.Printf("touchAllCacheEntries %s",filepath.Join(didDir, cidEntry.Name()))
+			}
+		}
+	}
+}
+
 func (cm *ConversionManager) cleanupRoutine() {
+	// re-using cares for performance improving on restart after long down-time.
+	cm.touchAllCacheEntries()
+
 	for range cm.cleanupTicker.C {
 		cm.mu.Lock()
 		now := time.Now()
