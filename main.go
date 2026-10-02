@@ -40,7 +40,7 @@ type Config struct {
 	AllowedDIDs    string
 	AllowedAudiences string
 	UploadTmpDir  string
-	ConvTmpDir    string
+	ConvDir       string
 	ThumbCmdGet string
 	ConvCmdEncode  string
 	ConvCmdStreamCopy string
@@ -380,7 +380,7 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 	}
 
 	// Create new directory for thumbnail in deterministic to reuse files/results beyond restarts.
-	oDir := filepath.Join(cm.config.ConvTmpDir, "thumb", did, cid)
+	oDir := filepath.Join(cm.config.ConvDir, "thumb", did, cid)
 	if err := os.MkdirAll(oDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create directory for thumbnail: %w", err)
 	}
@@ -455,7 +455,7 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 	}
 
 	// Create new directory for conversion in deterministic to reuse files/results beyond restarts.
-	oDir := filepath.Join(cm.config.ConvTmpDir, "hls", did, cid)
+	oDir := filepath.Join(cm.config.ConvDir, "hls", did, cid)
 	if err := os.MkdirAll(oDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -473,7 +473,7 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 
 func (cm *ConversionManager) downloadBlob(sourceURL string) (string, error) {
 	// Create temporary file for the downloaded blob
-	tmpFile, err := os.CreateTemp(cm.config.ConvTmpDir, "blob_*")
+	tmpFile, err := os.CreateTemp(cm.config.ConvDir, "blob_*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
@@ -657,7 +657,7 @@ func main() {
 		AllowedDIDs:    getEnvOrDefault("ALLOWED_DIDS", ""),
 		AllowedAudiences: getEnvOrDefault("ALLOWED_AUDIENCES", ""),
 		UploadTmpDir:   getEnvOrDefault("VIDEO_UPLOAD_TMP_DIR", "/tmp"),
-		ConvTmpDir:     getEnvOrDefault("VIDEO_CONVERT_TMP_DIR","/tmp"),
+		ConvDir:        getEnvOrDefault("VIDEO_CONVERT_DIR","/data"),
 		ThumbCmdGet:    getEnvOrDefault("VIDEO_THUMBNAIL_CMD_GET", "ffmpeg -ss 00:00:01.000 -i %s -vframes 1 -vf scale=480:-2 -y %s"),	// extract a frame at 1 second mark and create a thumbnail
 		ConvCmdEncode:  getEnvOrDefault("VIDEO_CONV_CMD_ENCODE",          "ffmpeg -i %s -c:v libx264 -profile:v main   -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
 		ConvCmdStreamCopy:  getEnvOrDefault("VIDEO_CONV_CMD_STREAM_COPY", "ffmpeg -i %s -c:v copy -c:a copy            -start_number 0 -hls_time 10 -hls_list_size 0 -f hls -hls_segment_filename %s %s"),
@@ -665,7 +665,7 @@ func main() {
 	}
 
 	// create dirs with mkdir -p
-	targets := []string { filepath.Dir(config.DBPath), config.UploadTmpDir, config.ConvTmpDir, }
+	targets := []string { filepath.Dir(config.DBPath), config.UploadTmpDir, config.ConvDir, }
 	for _, d := range targets {
 		err_ := os.MkdirAll(d, 0750)
 		if err_ != nil {
