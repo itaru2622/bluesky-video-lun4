@@ -373,26 +373,25 @@ func (cm *ConversionManager) getOrCreateThumbnail(did, cid string) (*Thumbnail, 
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// TODO: Load(key) => not exists when container restarted even tmpDir persisted.
 	if thumbA, exists := cm.thumbnails.Load(key); exists {
 		thumb := thumbA.(*Thumbnail)
 		thumb.LastAccessed = time.Now()
 		return thumb, nil
 	}
 
-	// Create new temporary directory for thumbnail
-	tmpDir, err := os.MkdirTemp(cm.config.ConvTmpDir, fmt.Sprintf("thumb_%s_%s_*", did, cid))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory for thumbnail: %w", err)
+	// Create new directory for thumbnail in deterministic to reuse files/results beyond restarts.
+	oDir := filepath.Join(cm.config.ConvTmpDir, "thumb", did, cid)
+	if err := os.MkdirAll(oDir, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create directory for thumbnail: %w", err)
 	}
 
 	thumb := &Thumbnail{
 		key:          key,
-		Path:         filepath.Join(tmpDir, "thumbnail.jpg"),
+		Path:         filepath.Join(oDir, "thumbnail.jpg"),
 		LastAccessed: time.Now(),
 		Generating:   false,
 	}
-	log.Printf("getOrCreateThumbnail created instance (key:%s) with %s", key, tmpDir)
+	log.Printf("getOrCreateThumbnail created instance (key:%s) with %s", key, oDir)
 	cm.thumbnails.Store(key, thumb)
 	return thumb, nil
 }
@@ -449,26 +448,25 @@ func (cm *ConversionManager) getOrCreateConversion(did, cid string) (*Conversion
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// TODO: Load(key) => not exists when container restarted even tmpDir persisted.
 	if convA, exists := cm.conversions.Load(key); exists {
 		conv := convA.(*Conversion)
 		conv.LastAccessed = time.Now()
 		return conv, nil
 	}
 
-	// Create new temporary directory
-	tmpDir, err := os.MkdirTemp(cm.config.ConvTmpDir, fmt.Sprintf("hls_%s_%s_*", did, cid))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+	// Create new directory for conversion in deterministic to reuse files/results beyond restarts.
+	oDir := filepath.Join(cm.config.ConvTmpDir, "hls", did, cid)
+	if err := os.MkdirAll(oDir, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	conv := &Conversion{
 		key:          key,
-		OutputDir:    tmpDir,
+		OutputDir:    oDir,
 		LastAccessed: time.Now(),
 		Converting:   false,
 	}
-	log.Printf("getOrCreateConversion created instance (key:%s) with %s", key, tmpDir)
+	log.Printf("getOrCreateConversion created instance (key:%s) with %s", key, oDir)
 	cm.conversions.Store(key, conv)
 	return conv, nil
 }
