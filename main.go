@@ -630,6 +630,10 @@ func (s *State) getVideoOrThumbnail(c *gin.Context) {
 		}
 	}
 
+	// Mark video request received, for later cleanup logic
+	now := time.Now()
+	os.Chtimes(conv.OutputDir, now, now)
+
 	// Set appropriate headers
 	if filepath.Ext(filename) == ".m3u8" {
 		c.Header("Content-Type", "application/vnd.apple.mpegurl")
@@ -670,6 +674,10 @@ func (s *State) getThumbnail(c *gin.Context) {
 			return
 		}
 	}
+
+	// Mark thumbnail request received, for later cleanup logic.
+	now := time.Now()
+	os.Chtimes(filepath.Dir(thumb.Path), now, now)
 
 	// Set appropriate headers
 	c.Header("Content-Type", "image/jpeg")
