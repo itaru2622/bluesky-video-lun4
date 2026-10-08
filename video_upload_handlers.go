@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	gonanoid "github.com/matoous/go-nanoid"
 
-	bskyshim "github.com/itaru2622/bluesky-video-lun4/internal/api/bsky"
 	"github.com/itaru2622/bluesky-video-lun4/internal/videoupload"
 )
 
@@ -87,7 +86,7 @@ func (s *State) startUpload(c *gin.Context) {
 		return
 	}
 
-	var in bskyshim.VideoStartUpload_Input
+	var in bsky.VideoStartUpload_Input
 	if err := c.ShouldBindJSON(&in); err != nil {
 		respondXRPCError(c, http.StatusBadRequest, "InvalidRequest", err.Error())
 		return
@@ -127,7 +126,7 @@ func (s *State) uploadPart(c *gin.Context) {
 
 // finishUpload implements POST /xrpc/app.bsky.video.finishUpload.
 func (s *State) finishUpload(c *gin.Context) {
-	var in bskyshim.VideoFinishUpload_Input
+	var in bsky.VideoFinishUpload_Input
 	if err := c.ShouldBindJSON(&in); err != nil {
 		respondXRPCError(c, http.StatusBadRequest, "InvalidRequest", err.Error())
 		return
@@ -144,7 +143,7 @@ func (s *State) finishUpload(c *gin.Context) {
 
 // abortUpload implements POST /xrpc/app.bsky.video.abortUpload.
 func (s *State) abortUpload(c *gin.Context) {
-	var in bskyshim.VideoAbortUpload_Input
+	var in bsky.VideoAbortUpload_Input
 	if err := c.ShouldBindJSON(&in); err != nil {
 		respondXRPCError(c, http.StatusBadRequest, "InvalidRequest", err.Error())
 		return
