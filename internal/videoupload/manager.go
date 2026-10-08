@@ -10,8 +10,6 @@ import (
 
 	"github.com/bluesky-social/indigo/api/bsky"
 	gonanoid "github.com/matoous/go-nanoid"
-
-	bskyshim "github.com/itaru2622/bluesky-video-lun4/internal/api/bsky"
 )
 
 const (
@@ -93,7 +91,7 @@ func newJobID() string {
 // TooManyOpenUploads, UploadForbidden, VideoTooLarge, VideoTooLong,
 // BadAspectRatio, UnsupportedContentType are never returned); getUploadLimits
 // isn't consulted here either.
-func (m *Manager) Start(userDID, token string, in bskyshim.VideoStartUpload_Input) (*bskyshim.VideoStartUpload_Output, error) {
+func (m *Manager) Start(userDID, token string, in bsky.VideoStartUpload_Input) (*bsky.VideoStartUpload_Output, error) {
 	if len(in.MimeType) < 3 || len(in.MimeType) > 255 {
 		return nil, ErrInvalidMimeType
 	}
@@ -118,11 +116,11 @@ func (m *Manager) Start(userDID, token string, in bskyshim.VideoStartUpload_Inpu
 	sess := newSession(jobID, userDID, token, in.MimeType, name, in.SizeBytes, m.cfg.PartSizeBytes, dir, m.cfg.SessionTTL)
 	m.byJob.Store(jobID, sess)
 
-	return &bskyshim.VideoStartUpload_Output{
+	return &bsky.VideoStartUpload_Output{
 		JobId:         jobID,
 		PartSizeBytes: sess.partSizeBytes,
 		PartCount:     sess.partCount,
-		ExpiresAt:     sess.expiresAt,
+		ExpiresAt:     sess.expiresAt.UTC().Format(time.RFC3339),
 	}, nil
 }
 
@@ -165,7 +163,7 @@ func errorForBlockedState(state string) error {
 // caller (e.g. chunked transfer-encoding) doesn't know it in advance.
 // Parts are idempotent: re-uploading the same partNumber simply
 // overwrites the previously-stored bytes for that part.
-func (m *Manager) WritePart(jobID string, partNumber, contentLength int64, body io.Reader) (*bskyshim.VideoUploadPart_Output, error) {
+func (m *Manager) WritePart(jobID string, partNumber, contentLength int64, body io.Reader) (*bsky.VideoUploadPart_Output, error) {
 	sess, err := m.get(jobID)
 	if err != nil {
 		return nil, err
@@ -214,14 +212,14 @@ func (m *Manager) WritePart(jobID string, partNumber, contentLength int64, body 
 	}
 
 	sess.receivedSize[partNumber] = n
-	return &bskyshim.VideoUploadPart_Output{PartNumber: partNumber, SizeBytes: n}, nil
+	return &bsky.VideoUploadPart_Output{PartNumber: partNumber, SizeBytes: n}, nil
 }
 
 // Finish implements app.bsky.video.finishUpload. It is idempotent: once a
 // session has left the "created" state, subsequent calls return the
 // already-known terminal outcome (or ErrUploadNotReady while a first
 // call is still assembling/handing off).
-func (m *Manager) Finish(jobID string) (*bskyshim.VideoFinishUpload_Output, error) {
+func (m *Manager) Finish(jobID string) (*bsky.VideoFinishUpload_Output, error) {
 	sess, err := m.get(jobID)
 	if err != nil {
 		return nil, err
@@ -240,7 +238,7 @@ func (m *Manager) Finish(jobID string) (*bskyshim.VideoFinishUpload_Output, erro
 		sess.state = StateFinishing
 	case StateCompleted:
 		// Idempotent retry: hand back the previously-completed outcome.
-		out := &bskyshim.VideoFinishUpload_Output{CompletedJobId: sess.completedJobID, JobStatus: sess.jobStatus}
+		out := &bsky.VideoFinishUpload_Output{CompletedJobId: sess.completedJobID, JobStatus: sess.jobStatus}
 		sess.mu.Unlock()
 		return out, nil
 	default:
@@ -280,7 +278,7 @@ func (m *Manager) Finish(jobID string) (*bskyshim.VideoFinishUpload_Output, erro
 	sess.mu.Unlock()
 	sess.removeFiles()
 
-	return &bskyshim.VideoFinishUpload_Output{CompletedJobId: completedJobID, JobStatus: status}, nil
+	return &bsky.VideoFinishUpload_Output{CompletedJobId: completedJobID, JobStatus: status}, nil
 }
 
 func (m *Manager) fail(sess *session, cause error) {
@@ -295,7 +293,7 @@ func (m *Manager) fail(sess *session, cause error) {
 // session that is still "created"; a session that is mid-finish returns
 // ErrUploadNotReady, and a session that already reached a terminal state
 // is left unchanged and its existing outcome is returned as-is.
-func (m *Manager) Abort(jobID string) (*bskyshim.VideoAbortUpload_Output, error) {
+func (m *Manager) Abort(jobID string) (*bsky.VideoAbortUpload_Output, error) {
 	sess, err := m.get(jobID)
 	if err != nil {
 		return nil, err
@@ -308,11 +306,11 @@ func (m *Manager) Abort(jobID string) (*bskyshim.VideoAbortUpload_Output, error)
 	case StateCreated:
 		sess.state = StateAborted
 		go sess.removeFiles()
-		return &bskyshim.VideoAbortUpload_Output{State: StateAborted}, nil
+		return &bsky.VideoAbortUpload_Output{State: StateAborted}, nil
 	case StateFinishing:
 		return nil, ErrUploadNotReady
 	default:
-		out := &bskyshim.VideoAbortUpload_Output{State: sess.state}
+		out := &bsky.VideoAbortUpload_Output{State: sess.state}
 		if sess.completedJobID != "" {
 			id := sess.completedJobID
 			out.CompletedJobId = &id
@@ -326,7 +324,7 @@ func (m *Manager) Abort(jobID string) (*bskyshim.VideoAbortUpload_Output, error)
 }
 
 // Status implements app.bsky.video.getUploadStatus.
-func (m *Manager) Status(jobID string) (*bskyshim.VideoGetUploadStatus_Output, error) {
+func (m *Manager) Status(jobID string) (*bsky.VideoGetUploadStatus_Output, error) {
 	sess, err := m.get(jobID)
 	if err != nil {
 		return nil, err
@@ -340,13 +338,13 @@ func (m *Manager) Status(jobID string) (*bskyshim.VideoGetUploadStatus_Output, e
 		go sess.removeFiles()
 	}
 
-	out := &bskyshim.VideoGetUploadStatus_Output{
+	out := &bsky.VideoGetUploadStatus_Output{
 		JobId:         sess.jobID,
 		State:         sess.state,
 		PartSizeBytes: sess.partSizeBytes,
 		PartCount:     sess.partCount,
 		ReceivedParts: sess.receivedPartNumbers(),
-		ExpiresAt:     sess.expiresAt,
+		ExpiresAt:     sess.expiresAt.UTC().Format(time.RFC3339),
 	}
 	if sess.state == StateCompleted {
 		id := sess.completedJobID
