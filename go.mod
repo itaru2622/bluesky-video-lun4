@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.1
 
 require (
-	github.com/bluesky-social/indigo v0.0.0-20261008014919-bb8aeaa2b189
+	github.com/bluesky-social/indigo v0.0.0-20261008210153-5568a3799fb6
 	github.com/ericvolp12/jwt-go-secp256k1 v0.0.2
 	github.com/gin-contrib/cors v1.7.3
 	github.com/gin-gonic/gin v1.10.0
