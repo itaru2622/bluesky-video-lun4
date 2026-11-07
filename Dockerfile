@@ -1,4 +1,4 @@
-FROM golang:1.26-trixie
+FROM golang:1.27-trixie
 ENV CGO_ENABLED=1
 
 WORKDIR /src
